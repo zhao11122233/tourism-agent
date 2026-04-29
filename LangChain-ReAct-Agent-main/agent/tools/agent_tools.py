@@ -6,6 +6,10 @@ from rag.rag_service import RagSummarizeService
 import random
 from utils.config_handler import agent_conf
 from utils.path_tool import get_abs_path
+import urllib.request
+import urllib.error
+import urllib.parse
+import json
 
 rag = RagSummarizeService()
 
@@ -25,13 +29,33 @@ def rag_summarize(query: str) -> str:
 @tool
 def get_weather(city: str) -> str:
     """获取指定城市的天气，以消息字符串的形式返回"""
-    return f"城市{city}天气为晴天，气温26摄氏度，空气湿度50%，南风1级，AQI21，最近6小时降雨概率极低"
+    try:
+        url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        current = data["current_condition"][0]
+        temp_c = current["temp_C"]
+        humidity = current["humidity"]
+        wind_dir = current["winddir16Point"]
+        wind_speed = current["windspeedKmph"]
+        weather_desc = current["weatherDesc"][0]["value"]
+        uv_index = current["uvIndex"]
+
+        return (
+            f"城市{city}当前天气：{weather_desc}，气温{temp_c}摄氏度，"
+            f"空气湿度{humidity}%，{wind_dir}风{wind_speed}公里/小时，紫外线指数{uv_index}"
+        )
+    except Exception as e:
+        logger.warning(f"[get_weather]获取{city}天气失败：{str(e)}")
+        return f"城市{city}天气信息暂时无法获取，请稍后重试"
 
 
 @tool
 def get_user_location() -> str:
-    """获取用户所在城市的名称，以纯字符串形式返回"""
-    return random.choice(["深圳", "合肥", "杭州"])
+    """随机获取用户所在城市的名称，以纯字符串形式返回"""
+    return random.choice(["深圳", "北京", "杭州"])
 
 
 @tool

@@ -3,9 +3,10 @@ from typing import Optional
 import os
 from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
-from langchain_community.chat_models.tongyi import BaseChatModel
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_community.chat_models.tongyi import ChatTongyi
+from pydantic import SecretStr
 from utils.config_handler import rag_conf
 
 # 加载.env文件中的环境变量
@@ -22,15 +23,15 @@ class BaseModelFactory(ABC):
 
 
 class ChatModelFactory(BaseModelFactory):
-    def generator(self)->Optional[Embeddings | BaseChatModel]:
+    def generator(self) -> BaseChatModel:
         return ChatTongyi(
             model=rag_conf["chat_model_name"],
-            api_key=DASHSCOPE_API_KEY
+            api_key=SecretStr(DASHSCOPE_API_KEY) if DASHSCOPE_API_KEY else None
         )
 
 
 class EmbeddingsFactory(BaseModelFactory):
-    def generator(self) -> Optional[Embeddings | BaseChatModel]:
+    def generator(self) -> Embeddings:
         return DashScopeEmbeddings(
             model=rag_conf["embedding_model_name"],
             dashscope_api_key=DASHSCOPE_API_KEY

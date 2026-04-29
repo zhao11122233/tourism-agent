@@ -64,7 +64,7 @@ class VectorStoreService:
 
             return []
 
-        allowed_files_path: list[str] = listdir_with_allowed_type(
+        allowed_files_path = listdir_with_allowed_type(
             get_abs_path(chroma_conf["data_path"]),
             tuple(chroma_conf["allow_knowledge_file_type"]),
         )
@@ -72,6 +72,10 @@ class VectorStoreService:
         for path in allowed_files_path:
             # 获取文件的MD5
             md5_hex = get_file_md5_hex(path)
+
+            if md5_hex is None:
+                logger.warning(f"[加载知识库]{path}无法计算MD5，跳过")
+                continue
 
             if check_md5_hex(md5_hex):
                 logger.info(f"[加载知识库]{path}内容已经存在知识库内，跳过")
@@ -90,8 +94,11 @@ class VectorStoreService:
                     logger.warning(f"[加载知识库]{path}分片后没有有效文本内容，跳过")
                     continue
 
-                # 将内容存入向量库
-                self.vector_store.add_documents(split_document)
+                # 将内容存入向量库（DashScope API 限制每次最多 10 条，需分批）
+                batch_size = 10
+                for i in range(0, len(split_document), batch_size):
+                    batch = split_document[i:i + batch_size]
+                    self.vector_store.add_documents(batch)
 
                 # 记录这个已经处理好的文件的md5，避免下次重复加载
                 save_md5_hex(md5_hex)
