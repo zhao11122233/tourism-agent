@@ -65,6 +65,7 @@
 │   ├── logger_handler.py        # 日志管理
 │   ├── path_tool.py             # 路径工具
 │   └── prompt_loader.py         # 提示词加载
+├── assets/                      # 演示截图等静态资源
 ├── app.py                       # Streamlit 应用入口
 ├── requirements.txt
 └── README.md
@@ -85,12 +86,17 @@
 
 ## 效果预览
 
-| 场景 | 说明 |
-|------|------|
-| RAG 知识问答 | 多领域健康知识检索与总结 |
-| 天气感知建议 | get_user_location → get_weather 工具链串联 |
-| 健康月度报告 | 4 步工具调用链 + Markdown 报告生成 |
-| 综合健康咨询 | 跨领域多轮 RAG 检索与综合推理 |
+### 1. RAG 知识问答 — 多领域健康知识检索与总结
+![知识问答](assets/chat1.png)
+
+### 2. 天气感知建议 — get_user_location → get_weather 工具链串联
+![天气感知](assets/chat2.png)
+
+### 3. 健康月度报告 — 4 步工具调用链 + Markdown 报告生成
+![月度报告](assets/chat3.png)
+
+### 4. 综合健康咨询 — 跨领域多轮 RAG 检索与综合推理
+![综合咨询](assets/chat4.png)
 
 ---
 
