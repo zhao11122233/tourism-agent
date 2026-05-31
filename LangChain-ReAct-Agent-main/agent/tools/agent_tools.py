@@ -55,7 +55,7 @@ def get_weather(city: str) -> str:
 @tool
 def get_user_location() -> str:
     """随机获取用户所在城市的名称，以纯字符串形式返回"""
-    return random.choice(["深圳", "北京", "杭州"])
+    return random.choice(["深圳", "北京", "杭州", "上海", "广州", "成都", "武汉", "南京", "重庆", "西安"])
 
 
 @tool
@@ -74,21 +74,8 @@ def generate_external_data():
     """
     {
         "user_id": {
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            ...
-        },
-        "user_id": {
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            ...
-        },
-        "user_id": {
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            "month" : {"特征": xxx, "效率": xxx, ...}
-            "month" : {"特征": xxx, "效率": xxx, ...}
+            "month" : {"基本信息": xxx, "健康指标": xxx, ...}
+            "month" : {"基本信息": xxx, "健康指标": xxx, ...}
             ...
         },
         ...
@@ -106,27 +93,50 @@ def generate_external_data():
                 arr: list[str] = line.strip().split(",")
 
                 user_id: str = arr[0].replace('"', "")
-                feature: str = arr[1].replace('"', "")
-                efficiency: str = arr[2].replace('"', "")
-                consumables: str = arr[3].replace('"', "")
-                comparison: str = arr[4].replace('"', "")
+                basic_info: str = arr[1].replace('"', "")
+                health_metrics: str = arr[2].replace('"', "")
+                exercise: str = arr[3].replace('"', "")
+                nutrition: str = arr[4].replace('"', "")
                 time: str = arr[5].replace('"', "")
 
                 if user_id not in external_data:
                     external_data[user_id] = {}
 
                 external_data[user_id][time] = {
-                    "特征": feature,
-                    "效率": efficiency,
-                    "耗材": consumables,
-                    "对比": comparison,
+                    "基本信息": basic_info,
+                    "健康指标": health_metrics,
+                    "运动健身": exercise,
+                    "饮食营养": nutrition,
                 }
 
 
 @tool
-def fetch_external_data(user_id: str, month: str) -> str:
-    """从外部系统中获取指定用户在指定月份的使用记录，以纯字符串形式返回， 如果未检索到返回空字符串"""
+def fetch_external_data(query: str) -> str:
+    """从外部系统中获取指定用户在某个月份的使用记录，以纯字符串形式返回，如果未检索到返回空字符串。
+
+    query 参数中需包含 user_id 和 month，支持以下格式：
+    - "user_id=1001, month=2025-06"
+    - "1001, 2025-06"
+    - 直接拼在一起如 "user_id=1001 month=2025-06"
+    """
+    import re
+
     generate_external_data()
+
+    user_id = ""
+    month = ""
+
+    user_match = re.search(r'(?:user_id\s*[=:]\s*)?(\d{4})', query)
+    month_match = re.search(r'(?:month\s*[=:]\s*)?(\d{4}-\d{2})', query)
+
+    if user_match:
+        user_id = user_match.group(1)
+    if month_match:
+        month = month_match.group(1)
+
+    if not user_id or not month:
+        logger.warning(f"[fetch_external_data]无法从query中解析出user_id和month：{query}")
+        return "未能解析用户ID和月份，请提供正确的格式如 user_id=1001, month=2025-06"
 
     try:
         return external_data[user_id][month]

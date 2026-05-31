@@ -43,7 +43,9 @@ class ReactAgent:
         self.agent = AgentExecutor(
             agent=agent,
             tools=wrapped_tools,
-            callbacks=[before_model_callback]
+            callbacks=[before_model_callback],
+            handle_parsing_errors=True,
+            verbose=False,
         )
 
     def execute_stream(self, query: str):
