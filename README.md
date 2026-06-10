@@ -42,12 +42,12 @@
 ```bash
 .
 ├── agent/                           # Agent 核心逻辑
-│   ├── travel_agent.py              # LangGraph 状态图 Agent
+│   ├── travel_agent.py              # ★ LangGraph 状态图 Agent（主）
 │   ├── react_agent.py               # [保留] 原 LangChain ReAct Agent
 │   └── tools/
 │       ├── agent_tools.py           # 8 个文旅工具 + 内置模拟数据
 │       └── middleware.py            # 工具监控 & 运行时上下文
-├── client/                          # 独立票务客户端层
+├── client/                          # ★ 独立票务客户端层
 │   └── ticket_client.py             # 余票查询 / 门票预订 (HTTP 封装)
 ├── config/                          # YAML 配置文件
 │   ├── agent.yml                    # 数据路径 & 客户端配置
@@ -56,18 +56,9 @@
 │   └── rag.yml                      # 模型名称
 ├── data/
 │   ├── knowledge/                   # 知识库文档（6 个 .txt）
-│   │   ├── 多平台订单数据结构.txt
-│   │   ├── 票务价格规则.txt
-│   │   ├── 特殊群体优惠政策.txt
-│   │   ├── 入园凭证核验规则.txt
-│   │   ├── 景区导览讲解材料.txt
-│   │   └── 短信验证码格式.txt
 │   └── tourism/                     # 模拟数据（5 个 JSON/CSV）
 ├── model/factory.py                 # Qwen3-Max & Embedding 初始化
-├── prompts/                         # 提示词模板
-│   ├── main_prompt.txt
-│   ├── rag_summarize.txt
-│   └── order_output_prompt.txt
+├── prompts/                         # 提示词模板（3 个 .txt）
 ├── rag/                             # RAG 检索增强模块
 ├── utils/                           # 通用工具
 ├── app.py                           # Streamlit 应用入口
@@ -152,13 +143,16 @@ python -m streamlit run app.py
 
 #### 票务优惠
 - 我有2个老人和1个儿童，想去故宫，有什么优惠政策
-- 小孩5岁去黄山要买票吗
+- 两个大人一个小孩，小孩5岁能免门票吗
+- 帮我算一下带军人证去黄山要花多少钱
 
 #### 路线规划
 - 帮我规划故宫一日游路线，有老人在
+- 兵马俑半天怎么玩
 
 #### 景点导览
 - 我现在到了北一楼，介绍一下这个景点
+- 午门有什么历史故事
 
 ---
 
