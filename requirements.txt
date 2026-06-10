@@ -23,5 +23,5 @@ streamlit==1.40.1                # 快速构建 Web 可视化界面
 pypdf==5.1.0                     # PDF 文档读取解析
 pyyaml==6.0.2                    # 配置文件解析
 
-# 模型服务（阿里通义千问/ dashscope）
+# 模型服务（阿里通义千问 / DashScope）
 dashscope==1.20.14                # 阿里模型调用 SDK

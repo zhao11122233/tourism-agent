@@ -116,7 +116,7 @@ Agent 层 **不处理** 网络请求、接口鉴权、签名、密钥 — 全部
 
 ### 环境要求
 - Python 3.10 及以上
-- 阿里云百炼 DashScope API Key
+- 阿里云百炼 DashScope API Key（免费额度足够日常使用）
 
 ```bash
 git clone https://github.com/zhao11122233/tourism-agent.git
@@ -163,7 +163,7 @@ python -m streamlit run app.py
 | `config/agent.yml` | 模拟数据路径 + 票务客户端配置 |
 | `config/chroma.yml` | 向量库、分块策略、检索参数 |
 | `config/prompts.yml` | 提示词路径映射 |
-| `config/rag.yml` | 模型名称（qwen3-max / text-embedding-v4） |
+| `config/rag.yml` | 模型名称（qwen-turbo / text-embedding-v4） |
 
 ---
 
@@ -171,7 +171,7 @@ python -m streamlit run app.py
 
 | 层级 | 技术 |
 |------|------|
-| 大模型 | 阿里通义千问 Qwen3-Max |
+| 大模型 | 阿里通义千问 qwen-turbo |
 | Agent 框架 | LangGraph StateGraph |
 | 向量检索 | ChromaDB + DashScope text-embedding-v4 |
 | 前端界面 | Streamlit（流式对话） |
