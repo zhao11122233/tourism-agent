@@ -1,1 +1,6 @@
 external_data_path: data/external/records.csv
+tourism_orders_path: data/tourism/orders.json
+tourism_scenic_spots_path: data/tourism/scenic_spots.csv
+tourism_discounts_path: data/tourism/discounts.json
+tourism_routes_path: data/tourism/routes.json
+tourism_narrations_path: data/tourism/narrations.json

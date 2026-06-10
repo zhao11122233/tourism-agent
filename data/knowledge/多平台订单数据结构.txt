@@ -1,0 +1,84 @@
+# 多平台订单数据结构说明
+
+## 美团文旅订单结构
+订单ID格式：MT + 年月日 + 6位流水号，例如 MT20250610000001
+必填字段：
+- order_id: 美团订单唯一标识
+- platform: 固定值 "meituan"
+- scenic_spot: 景区名称（如"故宫"、"八达岭长城"、"黄山风景区"）
+- ticket_type: 票种（"成人票"、"儿童票"、"老人票"、"军人票"、"残疾人票"、"学生票"、"团体票"）
+- quantity: 购票数量
+- unit_price: 单价（元）
+- discount_amount: 优惠金额（元）
+- total_price: 实付总价（元）
+- status: 订单状态（"待支付"、"已支付"、"已核销"、"已退款"、"已过期"）
+- visitor_name: 游客姓名
+- id_card: 身份证号（18位，部分脱敏如 110101****1234）
+- phone: 手机号（11位，部分脱敏如 138****5678）
+- sms_code: 短信验证码（6位纯数字）
+- qr_code: 入园二维码URL
+- order_time: 下单时间（ISO 8601格式）
+- visit_date: 计划游览日期
+- cancel_policy: 退改规则描述
+
+美团平台特有字段：
+- meituan_coupon_id: 美团优惠券ID
+- meituan_coupon_amount: 美团优惠券抵扣金额
+- is_group_buy: 是否为团购订单
+- group_buy_min_people: 团购最低成团人数
+
+## 携程文旅订单结构
+订单ID格式：CTRIP + 年月日 + 8位流水号，例如 CTRIP2025061000000001
+必填字段（与美团相同的基础字段 + 以下携程特有字段）：
+- ctrip_order_id: 携程内部订单号
+- ctrip_member_level: 会员等级（"普通"、"金牌"、"铂金"、"钻石"）
+- ctrip_points_used: 使用积分数量
+- ctrip_points_earned: 预计获得积分
+- insurance_included: 是否包含保险
+- insurance_type: 保险类型（"无"、"基础险"、"综合险"）
+- travel_group_id: 跟团游团号（如为跟团游）
+- hotel_bundled: 是否酒店打包订单
+- transport_bundled: 是否交通打包订单
+
+携程平台特有优惠：
+- ctrip_member_discount: 会员等级折扣（金牌98折、铂金95折、钻石92折）
+- ctrip_promotion_tag: 促销标签（"早鸟优惠"、"限时特惠"、"新用户专享"）
+
+## 景区自营平台订单结构
+订单ID格式：SPOT + 景区代码 + 年月日 + 4位流水号，例如 SPOTGUG20250610000001
+必填字段（基础字段 + 以下自营特有字段）：
+- spot_platform_id: 景区自营平台标识（如 "GUG"=故宫, "BAD"=八达岭, "HUA"=黄山）
+- ticket_window: 购票窗口（"线上"、"现场"、"自助机"）
+- id_card_verified: 身份证是否已核验（true/false）
+- face_recognition_enrolled: 是否录入人脸识别
+- guide_service_booked: 是否预约导游服务
+- guide_language: 导游语言（"中文"、"英文"、"日文"、"韩文"）
+- audio_guide_rented: 是否租用语音导览器
+- shuttle_bus_booked: 是否预订景区摆渡车
+- special_access_booked: 是否预约无障碍通道
+
+景区自营特有功能：
+- 支持身份证直接刷卡入园（无需换取纸质票）
+- 支持人脸识别快速入园
+- 支持年卡/季卡/月卡多次入园
+- 支持在线预约入园时段（分时预约）
+
+## 跨平台订单关联
+统一身份凭证关联字段：
+- unified_id: 跨平台统一身份ID（由系统根据身份证号生成）
+- linked_orders: 同一身份证号/手机号下的所有平台订单ID列表
+- primary_credential: 主凭证类型（"身份证"、"手机号"、"二维码"、"人脸"）
+- verification_status: 核验状态（"未核验"、"部分核验"、"全部核验"）
+- cross_platform_synced: 跨平台订单状态是否已同步
+
+## 订单状态流转
+- 待支付 → 已支付 → 已核销（正常流程）
+- 待支付 → 已取消（用户取消）
+- 已支付 → 已退款（退款流程）
+- 已支付 → 已过期（超过游览日期未使用）
+- 部分核销：团体票中部分人员已入园
+
+## SMS短信验证码字段格式
+- 美团：6位纯数字，发送方号码 106900****，有效期5分钟
+- 携程：8位字母数字混合，发送方号码 106980****，有效期10分钟
+- 景区自营：4-6位数字，发送方号码以景区服务号为准，有效期15分钟

@@ -1,6 +1,6 @@
 import functools
 from utils.logger_handler import logger
-from utils.prompt_loader import load_system_prompts, load_report_prompts
+from utils.prompt_loader import load_system_prompts, load_report_prompts, load_order_output_prompts
 from langchain_core.callbacks import BaseCallbackHandler
 
 # 模块级别的运行时上下文，用于在工具调用间传递状态
@@ -17,7 +17,8 @@ def monitor_tool(tool_func):
     工具调用监控装饰器：
     - 记录工具名称和参数
     - 记录调用成功/失败
-    - 对 fill_context_for_report 设置 report 上下文标记
+    - 对 fill_missing_info 设置 missing_info 上下文标记
+    - 对 guide_order_exec(preorder) 设置 order 上下文标记
     """
     tool_name = tool_func.name
     original_func = tool_func.func
@@ -31,8 +32,9 @@ def monitor_tool(tool_func):
             result = original_func(*args, **kwargs)
             logger.info(f"[tool monitor]工具{tool_name}调用成功")
 
-            if tool_name == "fill_context_for_report":
-                _runtime_context["report"] = True
+            if tool_name == "guide_order_exec":
+                if args and len(args) > 0 and "preorder" in str(args[0]).lower():
+                    _runtime_context["order"] = True
 
             return result
         except Exception as e:
@@ -68,16 +70,21 @@ def create_before_model_callback() -> BeforeModelCallback:
     return BeforeModelCallback()
 
 
-def report_prompt_switch() -> str:
+def prompt_switch() -> str:
     """
     动态提示词切换：
-    根据运行时上下文中是否有 report 标记，返回对应的系统提示词
+    根据运行时上下文中是否有 order 标记，返回对应的系统提示词
     """
-    is_report = _runtime_context.get("report", False)
-    if is_report:
-        return load_report_prompts()
+    is_order = _runtime_context.get("order", False)
+    if is_order:
+        return load_order_output_prompts()
     else:
         return load_system_prompts()
+
+
+def report_prompt_switch() -> str:
+    """保留旧接口兼容，内部委托给 prompt_switch"""
+    return prompt_switch()
 
 
 def reset_runtime_context():
