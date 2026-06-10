@@ -4,3 +4,9 @@ tourism_scenic_spots_path: data/tourism/scenic_spots.csv
 tourism_discounts_path: data/tourism/discounts.json
 tourism_routes_path: data/tourism/routes.json
 tourism_narrations_path: data/tourism/narrations.json
+
+# 票务客户端配置
+ticket_client:
+  base_url: ""        # 预留，为空时使用内置模拟数据
+  timeout: 10         # 请求超时（秒）
+  retry: 2            # 失败重试次数

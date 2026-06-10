@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 from rag.rag_service import RagSummarizeService
 from utils.config_handler import agent_conf
 from utils.path_tool import get_abs_path
+from client.ticket_client import get_ticket_client, TicketClientError
 
 rag = RagSummarizeService()
 
@@ -300,7 +301,11 @@ def parse_user_info(query: str) -> str:
         result["person_types"].append("普通成人")
 
     # 核心诉求识别
-    if any(w in query for w in ["购票", "买票", "订票", "票价", "价格", "多少钱", "费用", "打折", "能不能免", "免门票", "免票吗", "免费吗", "要门票吗", "要不要钱"]):
+    if any(w in query for w in ["订票", "预订", "帮我订", "下单", "出单", "预订单", "生成订单", "确认订单"]):
+        result["core_need"] = "order_generation"
+    elif any(w in query for w in ["查票", "余票", "有没有票", "还有票吗", "剩多少", "还有多少"]):
+        result["core_need"] = "ticketing"
+    elif any(w in query for w in ["买票", "购票", "票价", "价格", "多少钱", "费用", "打折", "能不能免", "免门票", "免票吗", "免费吗", "要门票吗", "要不要钱"]):
         result["core_need"] = "ticketing"
     elif any(w in query for w in ["路线", "规划", "行程", "路线图", "怎么走", "游玩路线", "一日游", "半日游"]):
         result["core_need"] = "route_planning"
@@ -310,8 +315,6 @@ def parse_user_info(query: str) -> str:
         result["core_need"] = "credential_verification"
     elif any(w in query for w in ["政策", "优惠规定", "免费政策", "半价", "免票", "残疾证", "军官证", "老人证", "有什么优惠"]):
         result["core_need"] = "policy_inquiry"
-    elif any(w in query for w in ["下单", "出单", "预订单", "确认订单", "生成订单"]):
-        result["core_need"] = "order_generation"
     else:
         result["core_need"] = "general_inquiry"
 
@@ -552,64 +555,6 @@ def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"
     }
     logger.info(f"[calc_ticket_price]{spot_name} {platform}: 总价{total_with_fee}元")
     return json.dumps(result, ensure_ascii=False, indent=2)
-
-
-@tool
-def fill_missing_info(missing_fields: str, scenario: str = "general") -> str:
-    """当用户缺少必要信息时调用，根据场景只询问该阶段真正需要的信息，返回必须一次性回复用户的补全提示。
-
-    scenario 按用户核心诉求分为：
-    - "policy_inquiry": 纯规则咨询，只问年龄/身高+景区名称，不问购票/平台/凭证/游玩时长
-    - "ticketing": 明确要买票/下单，可问年龄+景区+证件+手机+平台+日期
-    - "route_planning": 要规划路线，可问景区+日期+时长+人员
-    - "general": 通用场景
-
-    入参 missing_fields 为JSON字符串如'{{"age_detail":true,"scenic_spot":true}}'。
-    调用后必须将返回内容作为 Final Answer 直接回复用户，不能再调用其他工具。
-    """
-    try:
-        fields = json.loads(missing_fields) if isinstance(missing_fields, str) else missing_fields
-    except json.JSONDecodeError:
-        fields = {"age_detail": True, "scenic_spot": True}
-
-    # 各场景允许询问的字段白名单
-    scenario_whitelist = {
-        "policy_inquiry": ["age_detail", "scenic_spot"],
-        "ticketing": ["age_detail", "scenic_spot", "identity_docs", "phone", "platform", "visit_date"],
-        "route_planning": ["scenic_spot", "visit_date", "person_count"],
-        "general": ["age_detail", "scenic_spot", "identity_docs", "phone", "visit_date", "platform", "person_count", "certificate_type"],
-    }
-    allowed = set(scenario_whitelist.get(scenario, scenario_whitelist["general"]))
-
-    prompt_map = {
-        "age_detail": "孩子的年龄或身高（6岁以下或1.2米以下免票，6-18岁半价）",
-        "scenic_spot": "计划前往的景区名称",
-        "identity_docs": "出行人员身份证信息（仅用于实名购票和入园核验）",
-        "phone": "接收购票短信和验证码的手机号",
-        "visit_date": "计划游览日期（不同季节票价可能不同）",
-        "platform": "购票平台（美团/携程/景区官方平台）",
-        "person_count": "出行总人数",
-        "certificate_type": "优惠证件类型（军官证/士兵证/退伍优待证/残疾证及等级，非必填）",
-    }
-
-    prompts = []
-    for key, text in prompt_map.items():
-        if fields.get(key) and key in allowed:
-            prompts.append(text)
-
-    if not prompts:
-        return "[请直接回复用户] 您提供的信息已基本齐全，我可以为您继续服务了！"
-
-    # 一次性列出所有必填项，不分多轮追问
-    field_list = "、".join(f"{i+1}.{p}" for i, p in enumerate(prompts))
-    msg = (f"[请将以下内容作为Final Answer直接回复用户，不要调用其他工具]\n\n"
-           f"想要为您准确判断，还需要补充以下信息：{field_list}\n"
-           f"请一次性提供，我会立即为您查询。")
-
-    logger.info(f"[fill_missing_info]场景={scenario}, 字段={[k for k in prompt_map if fields.get(k) and k in allowed]}")
-    return msg
-
-
 @tool
 def plan_route(scenic_spot: str, traveler_types: str = '["普通成人"]', duration_hours: float = 4.0) -> str:
     """根据景区名称、出行人员类型和预计游览时间，生成分段式游览路线规划，包含景点节点、时间预估、无障碍设施和休息点信息，返回结构化文本。
@@ -807,89 +752,98 @@ def guide_order_exec(action: str, context: str = "{}") -> str:
 
 
 @tool
-def aggregate_verify_credentials(orders_json: str = "[]", credential_type: str = "身份证", credential_value: str = "") -> str:
-    """统一拉通美团、携程、景区自营多平台订单数据，通过身份证号/手机号关联形成统一身份，核验凭证有效性，输出入园通行判定和订单状态同步结果，返回JSON字符串。
+def ticket_query(scenic_spot: str, visit_date: str, traveler_count: int = 1) -> str:
+    """查询指定景区在指定日期的多平台余票信息，返回各平台票价和剩余数量。
 
-    入参 orders_json 为跨平台订单JSON数组字符串，credential_type 为凭证类型（"身份证"/"手机号"/"短信验证码"/"二维码"），
-    credential_value 为凭证值（支持脱敏格式如138****5678）。
+    入参 scenic_spot 为景区名称，visit_date 为游玩日期(YYYY-MM-DD格式)，traveler_count 为出行人数。
+    仅在用户明确询问"查票""余票""有没有票""还有票吗"时调用。
     """
+    if not scenic_spot:
+        return "请提供要查询的景区名称。"
+    if not visit_date:
+        return "请提供计划游玩的日期（如2026-06-15）。"
+
+    # 日期格式校验
     try:
-        orders = json.loads(orders_json) if isinstance(orders_json, str) else orders_json
-    except json.JSONDecodeError:
-        orders = _load_tourism_data()
+        datetime.datetime.strptime(visit_date, "%Y-%m-%d")
+    except ValueError:
+        return f"日期格式不正确：{visit_date}，请使用 YYYY-MM-DD 格式（如 2026-06-15）。"
+
     try:
-        cred_type = credential_type.strip()
-    except Exception:
-        cred_type = "身份证"
+        client = get_ticket_client()
+        result = client.query_tickets(scenic_spot, visit_date)
+    except TicketClientError as e:
+        logger.error(f"[ticket_query]查询失败：{e}")
+        return f"很抱歉，{scenic_spot}的余票查询暂时不可用（{str(e)}），请稍后重试或通过景区官方渠道查询。"
 
-    matched_orders = []
-    unified_id = None
-    visitor_name = ""
+    # 组装友好的自然语言回复
+    platforms = result.get("platforms", [])
+    if not platforms:
+        return f"{scenic_spot} 在 {visit_date} 暂无余票信息，建议通过景区官方渠道确认。"
 
-    # 脱敏匹配函数
-    def mask_match(stored, given):
-        """脱敏比对：支持****脱敏格式"""
-        if not stored or not given:
-            return False
-        if stored == given:
-            return True
-        if "****" in stored:
-            parts = stored.split("****")
-            if len(parts) == 2:
-                return given.startswith(parts[0]) and given.endswith(parts[1])
-        if "****" in given:
-            parts = given.split("****")
-            if len(parts) == 2:
-                return stored.startswith(parts[0]) and stored.endswith(parts[1])
-        return False
+    lines = [f"{result['scenic_spot']}  {visit_date}  多平台余票："]
+    total_remain = 0
+    for p in platforms:
+        status_emoji = "✓" if p["status"] == "有票" else "✗"
+        adult_price = p["adult_ticket"]["price"]
+        child_price = p["child_ticket"]["price"]
+        adult_left = p["adult_ticket"]["remaining"]
+        child_left = p["child_ticket"]["remaining"]
+        total_remain += p["total_remaining"]
+        lines.append(
+            f"  {status_emoji} {p['platform_name']}：成人票{adult_price}元(余{adult_left}张)，"
+            f"儿童票{child_price}元(余{child_left}张)"
+        )
+    lines.append(f"  合计剩余约{total_remain}张")
+    if traveler_count > total_remain:
+        lines.append(f"  您需要{traveler_count}张票，当前余票不足，建议尝试其他平台或日期")
 
-    for order in orders:
-        is_match = False
-        if cred_type == "身份证":
-            is_match = mask_match(order.get("id_card", ""), credential_value)
-        elif cred_type == "手机号":
-            is_match = mask_match(order.get("phone", ""), credential_value)
-        elif cred_type == "短信验证码":
-            is_match = (order.get("sms_code", "") == credential_value)
-            if is_match:
-                # 验证码核验同时检查平台格式
-                platform = order.get("platform", "")
-                fmt = SMS_FORMATS.get(platform, {})
-                if fmt:
-                    expected_len = fmt.get("length", 6)
-                    actual_len = len(credential_value)
-                    if isinstance(expected_len, int) and actual_len != expected_len:
-                        is_match = False
-        elif cred_type == "二维码":
-            is_match = (credential_value in order.get("qr_code", "") or order.get("order_id", "") in credential_value)
+    logger.info(f"[ticket_query]{scenic_spot} {visit_date} 查询完成，{len(platforms)}平台")
+    return "\n".join(lines)
 
-        if is_match:
-            matched_orders.append(order)
-            if not unified_id:
-                unified_id = f"UID_{order.get('id_card', order.get('phone', 'UNKNOWN'))[-8:]}"
-                visitor_name = order.get("visitor_name", "")
 
-    # 构建统一身份结果
-    all_verified = all(o.get("status") == "已支付" for o in matched_orders)
-    verification_result = "通过" if matched_orders and all_verified else ("部分通过" if matched_orders else "失败")
+@tool
+def ticket_book(scenic_spot: str, visit_date: str, traveler_count: int = 1, phone: str = "") -> str:
+    """协助用户完成门票预订/预约。提交预订请求，返回订单确认信息。
 
-    result = {
-        "unified_id": unified_id or "未关联到统一身份",
-        "visitor_name": visitor_name,
-        "credential_type": cred_type,
-        "credential_matched": bool(matched_orders),
-        "verification_result": verification_result,
-        "linked_orders_count": len(matched_orders),
-        "linked_orders": [o["order_id"] for o in matched_orders],
-        "order_details": matched_orders,
-        "entry_allowed": verification_result in ("通过", "部分通过"),
-        "entry_instructions": (
-            f"核验{verification_result}！共关联{len(matched_orders)}笔订单，"
-            f"您可使用{'/'.join(set(o.get('platform','') for o in matched_orders))}平台任意凭证入园。"
-            if matched_orders else
-            "未找到匹配订单，请确认凭证信息和订单平台。建议尝试其他凭证类型（如身份证换手机号）或联系景区服务台。"
-        ),
-        "synced_status": {o["order_id"]: o.get("status", "未知") for o in matched_orders},
-    }
-    logger.info(f"[aggregate_verify_credentials]{cred_type}核验：{verification_result}，{len(matched_orders)}笔订单")
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    入参 scenic_spot 为景区名称，visit_date 为游玩日期，traveler_count 为出行人数，phone 为11位手机号。
+    仅在用户明确表示"订票""预订""买票""帮我订"时调用。
+    """
+    if not scenic_spot:
+        return "请提供要预订的景区名称。"
+    if not visit_date:
+        return "请提供计划游玩的日期（如2026-06-15）。"
+    if not phone:
+        return "预订需要提供联系手机号，请告知您的11位手机号码（仅用于接收订单确认短信）。"
+    if not isinstance(traveler_count, int) or traveler_count <= 0:
+        return "出行人数格式有误，请提供正整数（如1、2、3）。"
+
+    # 手机号校验
+    phone_str = str(phone).strip()
+    if not re.match(r'^1[3-9]\d{9}$', phone_str):
+        return f"手机号格式不正确：{phone_str}，请输入正确的11位手机号（如13812345678）。"
+
+    try:
+        datetime.datetime.strptime(visit_date, "%Y-%m-%d")
+    except ValueError:
+        return f"日期格式不正确：{visit_date}，请使用 YYYY-MM-DD 格式（如 2026-06-15）。"
+
+    try:
+        client = get_ticket_client()
+        result = client.book_ticket(scenic_spot, visit_date, traveler_count, phone_str)
+    except TicketClientError as e:
+        logger.error(f"[ticket_book]预订失败：{e}")
+        return f"很抱歉，{scenic_spot}的门票预订暂时不可用（{str(e)}），请稍后重试或通过景区官方渠道预订。"
+
+    logger.info(f"[ticket_book]预订成功：{result['order_id']}")
+    masked_phone = f"{phone_str[:3]}****{phone_str[-4:]}"
+    return (
+        f"预订成功！\n"
+        f"  订单编号：{result['order_id']}\n"
+        f"  景区：{result['scenic_spot']}\n"
+        f"  日期：{result['visit_date']}\n"
+        f"  人数：{result['traveler_count']}人\n"
+        f"  联系手机：{result['phone']}\n"
+        f"  预估总价：{result['total_price']}元\n"
+        f"  {result['note']}"
+    )

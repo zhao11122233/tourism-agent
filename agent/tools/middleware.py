@@ -82,11 +82,6 @@ def prompt_switch() -> str:
         return load_system_prompts()
 
 
-def report_prompt_switch() -> str:
-    """保留旧接口兼容，内部委托给 prompt_switch"""
-    return prompt_switch()
-
-
 def reset_runtime_context():
     """重置运行时上下文"""
     _runtime_context.clear()

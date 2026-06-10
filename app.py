@@ -5,34 +5,35 @@ import os
 os.environ['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
 
 import streamlit as st
-from agent.react_agent import ReactAgent
+from agent.travel_agent import TravelAgent
 
 # 标题
-st.title("文旅智能助手 — 多平台票务聚合与导览服务")
+st.title("文旅智能助手 — 查票 · 订票 · 优惠 · 路线 · 导览")
 st.divider()
 
 # 侧边栏 — 示例查询
 with st.sidebar:
     st.subheader("示例查询")
     st.markdown("""
+**查票/订票类：**
+- 帮我查一下故宫明天的余票，3个人
+- 帮我订八达岭长城后天的票，2个人，手机号13812345678
+
 **票务优惠类：**
-- 我有2个老人和1个儿童，想去故宫游玩，帮我看看有什么优惠政策
-- 帮我算一下带军人证去黄山要花多少钱
+- 我有2个老人和1个儿童，想去故宫，有什么优惠政策
+- 小孩5岁去黄山要买票吗
 
 **路线规划类：**
 - 帮我规划故宫一日游路线，有老人在
 - 兵马俑半天怎么玩
 
-**凭证核验类：**
-- 用手机号138****5678核验我的故宫订单
-- 我在美团和携程都买了票，怎么统一入园
-
-**综合全链路：**
-- 我想带家人（2成人1老人1儿童）去八达岭长城，帮我从购票到入园全部搞定
+**景点导览类：**
+- 我现在到了北一楼，介绍一下这个景点
+- 午门有什么历史故事
 """)
 
 if "agent" not in st.session_state:
-    st.session_state["agent"] = ReactAgent()
+    st.session_state["agent"] = TravelAgent()
 
 if "message" not in st.session_state:
     st.session_state["message"] = []
