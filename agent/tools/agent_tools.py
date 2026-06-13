@@ -850,11 +850,6 @@ def ticket_book(scenic_spot: str, visit_date: str, traveler_count: int = 1, phon
     if not isinstance(traveler_count, int) or traveler_count <= 0:
         return "出行人数格式有误，请提供正整数（如1、2、3）。"
 
-    # 手机号校验
-    phone_str = str(phone).strip()
-    if not re.match(r'^1[3-9]\d{9}$', phone_str):
-        return f"手机号格式不正确：{phone_str}，请输入正确的11位手机号（如13812345678）。"
-
     try:
         datetime.datetime.strptime(visit_date, "%Y-%m-%d")
     except ValueError:
@@ -862,13 +857,13 @@ def ticket_book(scenic_spot: str, visit_date: str, traveler_count: int = 1, phon
 
     try:
         client = get_ticket_client()
-        result = client.book_ticket(scenic_spot, visit_date, traveler_count, phone_str)
+        result = client.book_ticket(scenic_spot, visit_date, traveler_count, phone)
     except TicketClientError as e:
         logger.error(f"[ticket_book]预订失败：{e}")
         return f"很抱歉，{scenic_spot}的门票预订暂时不可用（{str(e)}），请稍后重试或通过景区官方渠道预订。"
 
     logger.info(f"[ticket_book]预订成功：{result['order_id']}")
-    masked_phone = f"{phone_str[:3]}****{phone_str[-4:]}"
+    masked_phone = f"{phone[:3]}****{phone[-4:]}"
     return (
         f"预订成功！\n"
         f"  订单编号：{result['order_id']}\n"
