@@ -1,37 +1,55 @@
-import os
 import json
+import os
 import re
 import random
 from utils.logger_handler import logger
 from langchain_core.tools import tool
 from rag.rag_service import RagSummarizeService
-from utils.config_handler import agent_conf
-from utils.path_tool import get_abs_path
 from client.ticket_client import get_ticket_client, TicketClientError
 
 rag = RagSummarizeService()
 
 # ============================================================
-# 模拟数据层 — 景区价格、优惠规则、路线模板、讲解素材
+# 数据层 — 景区价格从 data/pricing/scenic_spots.json 加载，优惠规则/路线/讲解
 # ============================================================
 
-SCENIC_SPOT_PRICES = {
-    "故宫": {"base_adult": 60, "base_child": 30, "base_elderly": 30, "peak_season": True},
-    "故宫博物院": {"base_adult": 60, "base_child": 30, "base_elderly": 30, "peak_season": True},
-    "八达岭长城": {"base_adult": 40, "base_child": 20, "base_elderly": 20, "peak_season": True},
-    "黄山": {"base_adult": 190, "base_child": 95, "base_elderly": 95, "peak_season": True},
-    "黄山风景区": {"base_adult": 190, "base_child": 95, "base_elderly": 95, "peak_season": True},
-    "西湖": {"base_adult": 0, "base_child": 0, "base_elderly": 0, "peak_season": True},
-    "杭州西湖": {"base_adult": 0, "base_child": 0, "base_elderly": 0, "peak_season": True},
-    "秦始皇兵马俑博物馆": {"base_adult": 120, "base_child": 60, "base_elderly": 60, "peak_season": True},
-    "兵马俑": {"base_adult": 120, "base_child": 60, "base_elderly": 60, "peak_season": True},
-    "颐和园": {"base_adult": 30, "base_child": 15, "base_elderly": 15, "peak_season": True},
-    "张家界": {"base_adult": 225, "base_child": 113, "base_elderly": 113, "peak_season": True},
-    "张家界国家森林公园": {"base_adult": 225, "base_child": 113, "base_elderly": 113, "peak_season": True},
-    "九寨沟": {"base_adult": 169, "base_child": 85, "base_elderly": 85, "peak_season": True},
-    "布达拉宫": {"base_adult": 200, "base_child": 100, "base_elderly": 100, "peak_season": True},
-    "桂林漓江": {"base_adult": 215, "base_child": 108, "base_elderly": 108, "peak_season": True},
-}
+_pricing_data = None
+
+def _get_pricing():
+    """加载景区价格统一数据（模块级缓存，agent_tools 和 ticket_client 共享数据源）"""
+    global _pricing_data
+    if _pricing_data is None:
+        _pricing_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'pricing', 'scenic_spots.json')
+        with open(_pricing_path, 'r', encoding='utf-8') as _f:
+            _pricing_data = json.load(_f)
+    return _pricing_data
+
+def _in_date_range(month_day: str, start: str, end: str) -> bool:
+    """判断 MM-DD 是否在 [start, end] 区间内（支持跨年区间如 11-01 ~ 03-31）"""
+    if start <= end:
+        return start <= month_day <= end
+    else:
+        return month_day >= start or month_day <= end
+
+def _resolve_spot(name: str):
+    """根据景区名或别名查找景区价格数据，返回 (canonical_name, spot_data) 或 (None, None)"""
+    data = _get_pricing()
+    spots = data["scenic_spots"]
+    if name in spots:
+        return name, spots[name]
+    for cname, spot in spots.items():
+        if name in cname or cname in name:
+            return cname, spot
+        if name in spot.get("aliases", []):
+            return cname, spot
+    for cname, spot in spots.items():
+        for alias in spot.get("aliases", []):
+            if alias in name or name in alias:
+                return cname, spot
+    return None, None
+
+def _get_platform_fees():
+    return _get_pricing()["platform_fees"]
 
 PERSON_TYPE_DISCOUNTS = {
     "普通成人": {"discount_type": "全价", "discount_rate": 0.0, "required_docs": ["身份证"]},
@@ -46,12 +64,6 @@ PERSON_TYPE_DISCOUNTS = {
     "残疾人_3至4级": {"discount_type": "免票", "discount_rate": 1.0, "required_docs": ["残疾人证(3-4级)"]},
     "聋哑人士": {"discount_type": "免票", "discount_rate": 1.0, "required_docs": ["残疾人证(听力/语言类别)"]},
     "学生": {"discount_type": "半价", "discount_rate": 0.5, "required_docs": ["学生证", "身份证"]},
-}
-
-PLATFORM_FEES = {
-    "meituan": {"service_fee": 2.0, "new_user_discount": 5.0},
-    "ctrip": {"service_fee": 3.0, "member_discounts": {"金牌": 0.98, "铂金": 0.95, "钻石": 0.92}},
-    "spot_self": {"service_fee": 0.0},
 }
 
 ROUTE_TEMPLATES = {
@@ -185,42 +197,6 @@ PLATFORM_ORDER_SCHEMAS = {
 }
 
 
-# ============================================================
-# 模拟数据加载函数
-# ============================================================
-
-def _load_tourism_orders() -> list:
-    """加载模拟多平台订单数据，如数据文件不存在则返回内置样例"""
-    try:
-        path = get_abs_path(agent_conf.get("tourism_orders_path", "data/tourism/orders.json"))
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception as e:
-        logger.warning(f"[agent_tools]加载订单数据失败：{e}")
-    # 内置 fallback 样例
-    return [
-        {"order_id": "MT20250610000001", "platform": "meituan", "scenic_spot": "故宫", "ticket_type": "成人票",
-         "quantity": 2, "unit_price": 60.0, "total_price": 120.0, "status": "已支付",
-         "visitor_name": "李明", "id_card": "110101****1234", "phone": "138****5678", "sms_code": "872941",
-         "visit_date": "2026-06-12"},
-        {"order_id": "CTRIP2026061000000001", "platform": "ctrip", "scenic_spot": "八达岭长城", "ticket_type": "成人票",
-         "quantity": 1, "unit_price": 40.0, "total_price": 40.0, "status": "已支付",
-         "visitor_name": "王芳", "id_card": "320102****3456", "phone": "139****7890", "sms_code": "CT8K2P9M",
-         "visit_date": "2026-06-15"},
-        {"order_id": "SPOTGUG202606100001", "platform": "spot_self", "scenic_spot": "故宫", "ticket_type": "军人票",
-         "quantity": 1, "unit_price": 0.0, "total_price": 0.0, "status": "已支付",
-         "visitor_name": "张强", "id_card": "410102****5678", "phone": "136****1234", "sms_code": "3841",
-         "visit_date": "2026-06-12"},
-    ]
-
-
-def _load_tourism_data() -> dict:
-    """加载多平台订单缓存"""
-    if not hasattr(_load_tourism_data, "_cache"):
-        _load_tourism_data._cache = _load_tourism_orders()
-    return _load_tourism_data._cache
-
 
 # ============================================================
 # 8 个自定义工具
@@ -250,14 +226,6 @@ def parse_user_info(query: str) -> str:
         num = int(m.group(1))
         if num >= 3:  # 排除数量词（1-2可能是数量）
             age_set.add(f"{num}岁")
-    # 模式3: 空格/逗号分隔的2-3位数字（如"59 56"），可能为年龄
-    # 仅在已识别出人员类型的上下文中提取
-    if result["person_types"] and len(age_set) > 0:
-        bare_nums = re.findall(r'(?<!\d)(\d{2,3})(?!\s*[个位名岁月日])', query)
-        for n in bare_nums:
-            num = int(n)
-            if 3 <= num <= 120:
-                age_set.add(f"{num}岁")
     result["extracted_ages"] = sorted(age_set, key=lambda x: int(re.search(r'\d+', x).group()))
 
     # 人数提取：汇总所有匹配到的数字前缀（如"2个老人""1个儿童" → 2+1=3）
@@ -300,13 +268,55 @@ def parse_user_info(query: str) -> str:
     if not result["person_types"]:
         result["person_types"].append("普通成人")
 
+    # 模式3: 空格/逗号分隔的2-3位数字（如"59 56"），可能为年龄
+    if result["person_types"] and len(age_set) > 0:
+        bare_nums = re.findall(r'(?<!\d)(\d{2,3})(?!\s*[个位名岁月日])', query)
+        for n in bare_nums:
+            num = int(n)
+            if 3 <= num <= 120:
+                age_set.add(f"{num}岁")
+    result["extracted_ages"] = sorted(age_set, key=lambda x: int(re.search(r'\d+', x).group()))
+
+    # 根据年龄细化人员类型，使 verify_discount 能精确匹配年龄档位
+    if result["extracted_ages"]:
+        age_values = []
+        for a in result["extracted_ages"]:
+            m = re.search(r'\d+', a)
+            if m:
+                age_values.append(int(m.group()))
+
+        refined = []
+        remaining = list(age_values)
+
+        for ptype in result["person_types"]:
+            if ptype == "儿童":
+                matched = [a for a in remaining if a < 18]
+                for age in matched:
+                    refined.append("儿童_6岁以下" if age < 6 else "儿童_6至18岁")
+                    remaining.remove(age)
+                if not matched:
+                    refined.append(ptype)
+            elif ptype == "老人":
+                matched = [a for a in remaining if a >= 60]
+                for age in matched:
+                    refined.append("老人_70岁以上" if age >= 70 else "老人_60至69岁")
+                    remaining.remove(age)
+                if not matched:
+                    refined.append(ptype)
+            else:
+                refined.append(ptype)
+
+        result["person_types"] = refined
+
     # 核心诉求识别
     if any(w in query for w in ["订票", "预订", "帮我订", "下单", "出单", "预订单", "生成订单", "确认订单"]):
         result["core_need"] = "order_generation"
     elif any(w in query for w in ["查票", "余票", "有没有票", "还有票吗", "剩多少", "还有多少"]):
         result["core_need"] = "ticketing"
-    elif any(w in query for w in ["买票", "购票", "票价", "价格", "多少钱", "费用", "打折", "能不能免", "免门票", "免票吗", "免费吗", "要门票吗", "要不要钱"]):
+    elif any(w in query for w in ["买票", "购票"]):
         result["core_need"] = "ticketing"
+    elif any(w in query for w in ["票价", "价格", "多少钱", "费用", "打折", "能不能免", "免门票", "免票吗", "免费吗", "要门票吗", "要不要钱"]):
+        result["core_need"] = "policy_inquiry"
     elif any(w in query for w in ["路线", "规划", "行程", "路线图", "怎么走", "游玩路线", "一日游", "半日游"]):
         result["core_need"] = "route_planning"
     elif any(w in query for w in ["讲解", "导览", "介绍", "解说", "历史", "典故", "好玩"]):
@@ -316,7 +326,13 @@ def parse_user_info(query: str) -> str:
     elif any(w in query for w in ["政策", "优惠规定", "免费政策", "半价", "免票", "残疾证", "军官证", "老人证", "有什么优惠"]):
         result["core_need"] = "policy_inquiry"
     else:
-        result["core_need"] = "general_inquiry"
+        # 隐式意图识别：无明确关键词但有人口+景区信息 → 默认定价咨询
+        has_people_info = bool(result["person_types"] != ["普通成人"] or result["extracted_ages"] or result["traveler_count"] > 1)
+        has_scenic = any(w in query for w in ["故宫", "长城", "黄山", "西湖", "兵马俑", "颐和园", "张家界", "九寨沟", "布达拉宫", "漓江"])
+        if has_people_info and has_scenic:
+            result["core_need"] = "policy_inquiry"
+        else:
+            result["core_need"] = "general_inquiry"
 
     # 检测缺失的关键信息，直接内嵌追问提示（减少后续工具调用，防止循环）
     result["needs_info"] = False
@@ -325,10 +341,12 @@ def parse_user_info(query: str) -> str:
 
     # 政策咨询场景：必须知道年龄+景区
     if result["core_need"] in ("policy_inquiry", "ticketing"):
-        if "儿童" in result["person_types"] and not result["extracted_ages"]:
+        has_child = any("儿童" in t for t in result["person_types"])
+        has_elderly = any("老人" in t for t in result["person_types"])
+        if has_child and not result["extracted_ages"]:
             result["needs_info"] = True
             missing_items.append("孩子的具体年龄或身高（6岁以下/1.2米以下免票，6-18岁半价）")
-        if "老人" in result["person_types"] and not result["extracted_ages"]:
+        if has_elderly and not result["extracted_ages"]:
             result["needs_info"] = True
             missing_items.append("老人的具体年龄（60-69岁半价，70岁以上免票）")
         if not any(w in query for w in ["故宫", "长城", "黄山", "西湖", "兵马俑", "颐和园", "张家界", "九寨沟", "布达拉宫", "漓江", "景区", "景点"]):
@@ -467,11 +485,12 @@ def verify_discount(person_types: str, certificates: str = "{}") -> str:
 
 
 @tool
-def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"普通成人","discount_type":"全价","discount_rate":0.0}]', platform: str = "meituan") -> str:
-    """根据景区名称、已验证优惠的人员详情和购票平台，自动查询基准票价、应用折扣和平台附加费，计算最优总价，返回详细费用明细JSON字符串。
+def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"普通成人","discount_type":"全价","discount_rate":0.0}]', platform: str = "meituan", visit_date: str = "") -> str:
+    """根据景区名称、已验证优惠的人员详情、购票平台和游玩日期，自动查询基准票价（含淡旺季）、应用折扣和平台附加费，计算最优总价，返回详细费用明细JSON字符串。
 
     入参 scenic_spot 为景区名称，person_details 为 verify_discount 返回的JSON字符串（可选，默认按普通成人全价计算），
-    platform 为购票平台标识（meituan/ctrip/spot_self），可选，默认为meituan。
+    platform 为购票平台标识（meituan/ctrip/spot_self），可选，默认为meituan，
+    visit_date 为游玩日期(YYYY-MM-DD格式)，用于判断淡旺季，可选，默认按旺季计算。
     """
     if person_details is None:
         person_details = '[{"person_type":"普通成人","discount_type":"全价","discount_rate":0.0}]'
@@ -480,23 +499,32 @@ def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"
     except json.JSONDecodeError:
         details = [{"person_type": "普通成人", "discount_type": "全价", "discount_rate": 0.0}]
 
-    # 查找景区价格（模糊匹配）
-    spot_price = None
-    spot_name = scenic_spot.strip()
-    for name, price in SCENIC_SPOT_PRICES.items():
-        if spot_name in name or name in spot_name:
-            spot_price = price
-            spot_name = name
-            break
+    # 查找景区价格
+    cname, spot_data = _resolve_spot(scenic_spot.strip())
 
-    if not spot_price:
+    if not spot_data:
         return json.dumps({
             "error": f"未找到景区'{scenic_spot}'的价格信息",
-            "available_spots": list(SCENIC_SPOT_PRICES.keys()),
+            "available_spots": list(_get_pricing()["scenic_spots"].keys()),
         }, ensure_ascii=False)
 
+    # 判断淡旺季
+    if visit_date and len(visit_date) >= 10:
+        month_day = visit_date[5:10]  # "MM-DD"
+        peak = spot_data["peak_season"]
+        if _in_date_range(month_day, peak["start"], peak["end"]):
+            season = "peak"
+        else:
+            season = "off_peak"
+    else:
+        season = "peak"  # 未提供日期默认旺季
+
+    season_name = spot_data[f"{'peak' if season == 'peak' else 'off_peak'}_season"]["name"]
+    prices = spot_data[f"prices_{season}"]
+
     # 平台费用
-    pf = PLATFORM_FEES.get(platform, PLATFORM_FEES["spot_self"])
+    platform_fees = _get_platform_fees()
+    pf = platform_fees.get(platform, platform_fees["spot_self"])
 
     breakdown = []
     total = 0.0
@@ -506,13 +534,15 @@ def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"
         ptype = person.get("person_type", "普通成人")
         discount_rate = person.get("discount_rate", 0.0)
 
-        # 确定基准票价
+        # 确定基准票价：按人员类型匹配 JSON 中的价格键
         if "老人" in ptype:
-            base_price = spot_price["base_elderly"]
+            base_price = prices["elderly"]
         elif "儿童" in ptype:
-            base_price = spot_price["base_child"]
+            base_price = prices["child"]
+        elif "学生" in ptype:
+            base_price = prices["student"]
         else:
-            base_price = spot_price["base_adult"]
+            base_price = prices["adult"]
 
         # 应用优惠折扣
         discount_amount = round(base_price * discount_rate, 2)
@@ -525,6 +555,7 @@ def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"
             "discount_amount": discount_amount,
             "discount_reason": person.get("discount_type", ""),
             "final_price": final_price,
+            "season": season_name,
         }
 
         # 陪护优惠
@@ -543,8 +574,9 @@ def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"
     total_with_fee = round(total + service_fee, 2)
 
     result = {
-        "scenic_spot": spot_name,
+        "scenic_spot": cname,
         "platform": platform,
+        "season": season_name,
         "base_total": round(sum(p["base_price"] for p in breakdown), 2),
         "total_discount": round(total_discount, 2),
         "subtotal": round(total, 2),
@@ -553,7 +585,7 @@ def calc_ticket_price(scenic_spot: str, person_details: str = '[{"person_type":"
         "price_breakdown": breakdown,
         "currency": "人民币/元",
     }
-    logger.info(f"[calc_ticket_price]{spot_name} {platform}: 总价{total_with_fee}元")
+    logger.info(f"[calc_ticket_price]{cname} {season_name} {platform}: 总价{total_with_fee}元")
     return json.dumps(result, ensure_ascii=False, indent=2)
 @tool
 def plan_route(scenic_spot: str, traveler_types: str = '["普通成人"]', duration_hours: float = 4.0) -> str:
@@ -737,7 +769,7 @@ def guide_order_exec(action: str, context: str = "{}") -> str:
             "scenic_spot": scenic,
             "tickets": ticket_items,
             "total_price": round(total_price, 2),
-            "platform_service_fee": PLATFORM_FEES.get(platform, {}).get("service_fee", 0),
+            "platform_service_fee": _get_platform_fees().get(platform, {}).get("service_fee", 0),
             "verification_methods": ["身份证", "二维码"] + (["短信验证码"] if platform in ("meituan", "ctrip") else []),
             "required_documents": list(required_docs) if required_docs else ["身份证"],
             "entry_instructions": f"请携带{'、'.join(required_docs) if required_docs else '身份证'}在{scenic}入口闸机处，使用任意一种凭证（身份证/二维码/短信验证码）即可入园。如需帮助请联系景区服务台。",

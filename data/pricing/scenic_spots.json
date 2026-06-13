@@ -1,0 +1,146 @@
+{
+  "_description": "景区价格统一数据 — agent_tools.py 和 ticket_client.py 的唯一价格来源。修改价格只需改此文件。",
+
+  "scenic_spots": {
+    "故宫博物院": {
+      "aliases": ["故宫"],
+      "peak_season": { "name": "旺季", "start": "04-01", "end": "10-31" },
+      "off_peak_season": { "name": "淡季", "start": "11-01", "end": "03-31" },
+      "prices_peak":   { "adult": 60, "child": 30, "elderly": 30, "student": 30 },
+      "prices_off_peak": { "adult": 40, "child": 20, "elderly": 20, "student": 20 },
+      "extra_items": [
+        { "name": "珍宝馆", "price": 10, "discountable": false },
+        { "name": "钟表馆", "price": 10, "discountable": false }
+      ],
+      "note": "旺季4/1-10/31，淡季11/1-3/31；珍宝馆/钟表馆单独购票不打折"
+    },
+
+    "八达岭长城": {
+      "aliases": [],
+      "peak_season": { "name": "旺季", "start": "04-01", "end": "10-31" },
+      "off_peak_season": { "name": "淡季", "start": "11-01", "end": "03-31" },
+      "prices_peak":   { "adult": 40, "child": 20, "elderly": 20, "student": 20 },
+      "prices_off_peak": { "adult": 35, "child": 17.5, "elderly": 17.5, "student": 17.5 },
+      "extra_items": [
+        { "name": "缆车/索道单程", "price": 100, "discountable": false },
+        { "name": "缆车/索道往返", "price": 140, "discountable": false }
+      ],
+      "note": "旺季4-10月，淡季11-3月；缆车索道不打折，老人儿童无优惠"
+    },
+
+    "黄山风景区": {
+      "aliases": ["黄山"],
+      "peak_season": { "name": "旺季", "start": "03-01", "end": "11-30" },
+      "off_peak_season": { "name": "淡季", "start": "12-01", "end": "02-28" },
+      "prices_peak":   { "adult": 190, "child": 95, "elderly": 95, "student": 95 },
+      "prices_off_peak": { "adult": 150, "child": 75, "elderly": 75, "student": 75 },
+      "extra_items": [
+        { "name": "云谷索道(旺季)", "price": 80, "discountable": false },
+        { "name": "云谷索道(淡季)", "price": 65, "discountable": false },
+        { "name": "玉屏索道(旺季)", "price": 90, "discountable": false },
+        { "name": "玉屏索道(淡季)", "price": 75, "discountable": false },
+        { "name": "太平索道(旺季)", "price": 80, "discountable": false },
+        { "name": "太平索道(淡季)", "price": 65, "discountable": false },
+        { "name": "景区换乘车(单程)", "price": 19, "discountable": false }
+      ],
+      "note": "旺季3/1-11/30，淡季12/1-2月底；索道和换乘车不打折"
+    },
+
+    "杭州西湖": {
+      "aliases": ["西湖"],
+      "peak_season": { "name": "全年", "start": "01-01", "end": "12-31" },
+      "off_peak_season": { "name": "全年", "start": "01-01", "end": "12-31" },
+      "prices_peak":   { "adult": 0, "child": 0, "elderly": 0, "student": 0 },
+      "prices_off_peak": { "adult": 0, "child": 0, "elderly": 0, "student": 0 },
+      "extra_items": [],
+      "sub_spots": {
+        "雷峰塔":    { "adult": 40, "child": 20, "elderly": 20, "student": 20 },
+        "岳王庙":    { "adult": 25, "child": 12.5, "elderly": 12.5, "student": 12.5 },
+        "三潭印月":  { "adult": 55, "child": 45, "elderly": 45, "student": 45, "note": "含船票" },
+        "灵隐寺":    { "adult": 30, "child": 15, "elderly": 15, "student": 15 },
+        "飞来峰":    { "adult": 45, "child": 22.5, "elderly": 22.5, "student": 22.5 },
+        "西湖游船":  { "adult": 70, "child": 35, "elderly": 35, "student": 35, "note": "含三潭印月登岛" }
+      },
+      "note": "西湖环湖免费开放；雷峰塔/岳王庙/灵隐寺/飞来峰等独立收费；军人/残疾人各收费景点均免票"
+    },
+
+    "秦始皇兵马俑博物馆": {
+      "aliases": ["兵马俑"],
+      "peak_season": { "name": "全年", "start": "01-01", "end": "12-31" },
+      "off_peak_season": { "name": "全年", "start": "01-01", "end": "12-31" },
+      "prices_peak":   { "adult": 120, "child": 60, "elderly": 60, "student": 60 },
+      "prices_off_peak": { "adult": 120, "child": 60, "elderly": 60, "student": 60 },
+      "extra_items": [],
+      "note": "全年统一价，无淡旺季区分"
+    },
+
+    "颐和园": {
+      "aliases": [],
+      "peak_season": { "name": "旺季", "start": "04-01", "end": "10-31" },
+      "off_peak_season": { "name": "淡季", "start": "11-01", "end": "03-31" },
+      "prices_peak":   { "adult": 30, "child": 15, "elderly": 15, "student": 15 },
+      "prices_off_peak": { "adult": 20, "child": 10, "elderly": 10, "student": 10 },
+      "extra_items": [],
+      "note": "旺季4/1-10/31，淡季11/1-3/31"
+    },
+
+    "张家界国家森林公园": {
+      "aliases": ["张家界"],
+      "peak_season": { "name": "旺季", "start": "03-01", "end": "11-30" },
+      "off_peak_season": { "name": "淡季", "start": "12-01", "end": "02-28" },
+      "prices_peak":   { "adult": 225, "child": 113, "elderly": 113, "student": 113 },
+      "prices_off_peak": { "adult": 165, "child": 83, "elderly": 83, "student": 83 },
+      "extra_items": [],
+      "note": "旺季3/1-11/30，淡季12/1-2月底；门票4天有效"
+    },
+
+    "九寨沟": {
+      "aliases": [],
+      "peak_season": { "name": "旺季", "start": "04-01", "end": "11-15" },
+      "off_peak_season": { "name": "淡季", "start": "11-16", "end": "03-31" },
+      "prices_peak":   { "adult": 169, "child": 85, "elderly": 85, "student": 85 },
+      "prices_off_peak": { "adult": 80, "child": 40, "elderly": 40, "student": 40 },
+      "extra_items": [],
+      "note": "旺季4/1-11/15，淡季11/16-3/31"
+    },
+
+    "布达拉宫": {
+      "aliases": [],
+      "peak_season": { "name": "旺季", "start": "05-01", "end": "10-31" },
+      "off_peak_season": { "name": "淡季", "start": "11-01", "end": "04-30" },
+      "prices_peak":   { "adult": 200, "child": 100, "elderly": 100, "student": 100 },
+      "prices_off_peak": { "adult": 100, "child": 50, "elderly": 50, "student": 50 },
+      "extra_items": [],
+      "note": "旺季5/1-10/31，淡季11/1-4/30；需提前1天预约"
+    },
+
+    "桂林漓江": {
+      "aliases": [],
+      "peak_season": { "name": "旺季", "start": "04-01", "end": "10-31" },
+      "off_peak_season": { "name": "淡季", "start": "11-01", "end": "03-31" },
+      "prices_peak":   { "adult": 215, "child": 108, "elderly": 108, "student": 108 },
+      "prices_off_peak": { "adult": 180, "child": 90, "elderly": 90, "student": 90 },
+      "extra_items": [],
+      "note": "旺季4-10月，淡季11-3月；不同航段价格有差异"
+    }
+  },
+
+  "platform_fees": {
+    "meituan": {
+      "service_fee": 2.0,
+      "new_user_discount": 5.0,
+      "group_discount": { "min_count": 5, "rate": 0.98 },
+      "note": "美团新用户首单减5元；5人及以上团购享98折"
+    },
+    "ctrip": {
+      "service_fee": 3.0,
+      "member_discounts": { "金牌": 0.98, "铂金": 0.95, "钻石": 0.92 },
+      "early_bird_discount": { "days_ahead": 7, "rate": 0.95 },
+      "note": "携程会员折上折；提前7天以上预订享95折"
+    },
+    "spot_self": {
+      "service_fee": 0.0,
+      "note": "景区自营平台无服务费"
+    }
+  }
+}

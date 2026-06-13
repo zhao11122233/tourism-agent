@@ -3,7 +3,7 @@ from langchain_core.prompts import PromptTemplate
 from model.factory import chat_model
 from utils.prompt_loader import load_system_prompts
 from agent.tools.agent_tools import (parse_user_info, search_policy, verify_discount, calc_ticket_price,
-                                     plan_route, guide_order_exec)
+                                     plan_route, guide_order_exec, ticket_query, ticket_book)
 from agent.tools.middleware import monitor_tool, create_before_model_callback, prompt_switch, get_runtime_context, reset_runtime_context
 
 
@@ -20,6 +20,8 @@ class ReactAgent:
             monitor_tool(calc_ticket_price),
             monitor_tool(plan_route),
             monitor_tool(guide_order_exec),
+            monitor_tool(ticket_query),
+            monitor_tool(ticket_book),
         ]
 
         # 创建 before_model 日志回调

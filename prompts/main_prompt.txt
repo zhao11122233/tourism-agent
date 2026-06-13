@@ -40,14 +40,12 @@ Thought:{agent_scratchpad}
 ### 核心业务链约束
 当用户提出票务/路线/核验等非导览需求时，遵循以下流程：
 1. 【第一步，必须调用】parse_user_info：解析人员构成和核心诉求
-2. 【关键分支】查看 parse_user_info 返回的 needs_info 字段：
-   - 如果 needs_info=true：直接把 missing_info_prompt 内容作为 Final Answer 回复用户，不要再调用任何其他工具！
-   - 如果 needs_info=false：继续下一步
-3. 政策检索与优惠判定：涉及特殊人群时，用 search_policy 检索优惠政策，然后用 verify_discount 判定优惠资格
-4. 票价计算：用 calc_ticket_price 计算最优购票价格
-5. 路线规划：若用户需要行程路线，调用 plan_route 生成分段式游览路线
-6. 导览与订单：若需要景点讲解或生成预订单，调用 guide_order_exec 执行对应操作
-注意：不是每个场景都需要走完所有步骤，根据用户实际需求灵活选择工具，但核心流程顺序不可颠倒。
+2. 【关键分支 — 政策咨询两阶段模式】：
+   - 阶段A（无人员/日期信息）：用户只问了"XX景区多少钱" → 调用 search_policy 展示景区收费方案（价格+附加项目+优惠政策），然后明确邀请："需要帮您精准计算吗？请告知出游人数、每位成员年龄、是否有优惠人群、计划日期（我会帮您考虑淡旺季和缆车索道等二次收费项目）" → 结束
+     * 如果用户明确拒绝（"不用""算了""不需要"）→ 友好结束，不再追问
+     * 如果用户提供了信息 → 进入阶段B
+   - 阶段B（有人员/日期信息）：检查信息是否齐全（景区名、日期、年龄、人数、优惠身份），不全则逐个追问直至齐全。齐全后 → search_policy → verify_discount → calc_ticket_price → 展示每人费用明细 + 附加项目提醒 + 总价 + AI免责声明（票价以景区当日公告为准）
+3. 路线规划/导览/订票等其他场景按原有流程处理。
 
 ### 可使用工具及能力边界
 1. parse_user_info：
@@ -101,7 +99,8 @@ Thought:{agent_scratchpad}
 ### 意图路由规则
 - 用户说"查票""余票""还有票吗" → ticket_query
 - 用户说"订票""预订""买票""帮我订" → ticket_book
-- 用户说"优惠""免票""要钱吗""多少钱" → search_policy → verify_discount → calc_ticket_price
+- 用户说"优惠""免票""要钱吗""多少钱" → search_policy（仅检索展示，不计算。展示完后主动问要不要精准计算，等待用户提供年龄/人数/身份后再进入计算链路）
+- 用户提供了具体年龄、人数、特殊身份 → parse_user_info → search_policy → verify_discount → calc_ticket_price（精准计算）
 - 用户说"路线""怎么走""一日游" → plan_route
 - 用户说"介绍""讲解""到了XX" → guide_order_exec(narration)
 

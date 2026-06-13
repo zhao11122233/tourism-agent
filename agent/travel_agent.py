@@ -177,7 +177,10 @@ def node_ticket_booking(state: TravelState) -> dict:
 
 
 def node_policy_query(state: TravelState) -> dict:
-    """政策查询节点：search_policy → verify_discount → calc_ticket_price"""
+    """政策查询节点 — 两阶段模式：
+    阶段1（无具体人员/日期）：展示景区收费方案 + 邀请用户提供信息
+    阶段2（有人员/日期）：收集完整信息 → search_policy → verify_discount → calc_ticket_price
+    """
     msgs = state.get("messages", [])
     query = msgs[-1].content if msgs else ""
 
@@ -187,48 +190,128 @@ def node_policy_query(state: TravelState) -> dict:
     except Exception:
         return {"final_answer": "抱歉，无法解析您的查询，请重新描述一下您的问题。"}
 
-    # 如果信息不足，生成追问
-    if parsed.get("needs_info"):
-        return {"final_answer": parsed.get("missing_info_prompt", "请补充年龄和景区信息。")}
-
-    # 检索政策
-    policy_query_str = f"{state.get('scenic_spot', '景区')} 优惠政策 老人 儿童 军人 残疾人"
-    policy_result = search_policy.invoke({"query": policy_query_str})
-
-    # 人员类型 + 优惠判定
     person_types = parsed.get("person_types", ["普通成人"])
+    ages = parsed.get("extracted_ages", [])
+    traveler_count = parsed.get("traveler_count", 1)
+    scenic = state.get("scenic_spot", "")
+    date = state.get("visit_date", "")
+
+    # ---- 检测用户是否明确拒绝 ----
+    reject_words = ["不用", "算了", "不需要", "不了", "没事", "不用了", "谢谢", "好的谢谢", "知道了"]
+    if any(w == query.strip() or query.strip().startswith(w) for w in reject_words):
+        return {"final_answer": "好的，如有需要随时问我。祝您旅途愉快！"}
+
+    # ---- 判断阶段：有特殊人群 / 有年龄 / 有多人 / 有明确日期 → 阶段2 ----
+    has_specific_persons = (
+        person_types != ["普通成人"] or
+        len(ages) > 0 or
+        traveler_count > 1 or
+        (len(date) >= 10)
+    )
+
+    # ================================================================
+    # 阶段1：无具体人员信息 → 展示收费方案 + 明确邀请
+    # ================================================================
+    if not has_specific_persons:
+        search_query = f"{scenic} 票价 旺季 淡季 收费方案 附加项目" if scenic else "景区票价 收费方案"
+        policy_result = search_policy.invoke({"query": search_query})
+        offer = (
+            "\n\n---\n"
+            "以上是景区的收费方案。需要我帮您精准计算吗？请告诉我以下信息：\n"
+            "  · 出游人数和每位成员的年龄\n"
+            "  · 是否有老年人(60+)、儿童、军人、残疾人、学生等优惠人群\n"
+            "  · 计划游玩日期（用于判断淡旺季，老人小孩乘坐缆车索道等二次收费项目也会帮您考虑）"
+        )
+        return {"final_answer": policy_result + offer}
+
+    # ================================================================
+    # 阶段2：有具体人员 → 收集完整信息 → 计算
+    # ================================================================
+    missing_items = []
+
+    # 检查景区
+    if not scenic:
+        missing_items.append("计划前往的景区名称")
+    # 检查日期（有具体人员但没有日期）
+    if not date or len(date) < 10:
+        missing_items.append("计划游玩日期（用于判断淡旺季）")
+    # 检查年龄（有老人/儿童但没有具体年龄）
+    has_elderly_type = any("老人" in t for t in person_types)
+    has_child_type = any("儿童" in t for t in person_types)
+    if (has_elderly_type or has_child_type) and not ages:
+        if has_elderly_type:
+            missing_items.append("老人的具体年龄（60-69半价，70+免票）")
+        if has_child_type:
+            missing_items.append("孩子的具体年龄或身高（1.2m以下/6岁以下免票，6-18半价）")
+    # 人数确认
+    if traveler_count <= 1 and len(person_types) > 1:
+        missing_items.append(f"请确认：您说的{'、'.join(person_types)}一共几个人？")
+
+    if missing_items:
+        items_str = "、".join(f"{i+1}.{item}" for i, item in enumerate(missing_items))
+        prompt = f"想要为您精准计算，还需要补充以下信息：{items_str}\n请一次性告诉我，马上帮您算出结果。"
+        return {"final_answer": prompt}
+
+    # ---- 信息齐全，执行计算 ----
+    # 优惠判定
     pt_str = json.dumps(person_types, ensure_ascii=False)
     verify_result = verify_discount.invoke({
         "person_types": pt_str,
         "certificates": "{}",
     })
 
+    if not scenic:
+        scenic = "故宫"
+
     # 票价计算
-    scenic = state.get("scenic_spot", "故宫")
     price_result = calc_ticket_price.invoke({
         "scenic_spot": scenic,
         "person_details": verify_result,
         "platform": "meituan",
+        "visit_date": date,
     })
 
-    # 组装最终回答
     try:
         price_data = json.loads(price_result)
         total = price_data.get("total_price", "?")
+        season = price_data.get("season", "")
         breakdown = price_data.get("price_breakdown", [])
     except Exception:
         total = "?"
+        season = ""
         breakdown = []
 
-    summary_lines = [f"根据查询结果，{scenic}的票价信息如下："]
+    lines = [f"为您计算 {scenic} 的票价方案（{season}）：\n"]
     for item in breakdown:
         ptype = item.get("person_type", "")
-        final = item.get("final_price", "?")
+        final_price = item.get("final_price", "?")
+        base = item.get("base_price", "?")
+        discount = item.get("discount_amount", 0)
         reason = item.get("discount_reason", "")
-        summary_lines.append(f"  · {ptype}：{final}元 ({reason})" if reason else f"  · {ptype}：{final}元")
-    summary_lines.append(f"  总价约：{total}元（以景区当日实际价格为准）")
+        if discount > 0:
+            lines.append(f"  · {ptype}：原价{base}元 → {reason}减{discount}元 → 实付{final_price}元")
+        else:
+            lines.append(f"  · {ptype}：{final_price}元（{reason}）")
 
-    return {"final_answer": "\n".join(summary_lines)}
+    # 附加项目提示
+    lines.append(f"\n📌 附加项目提醒：")
+    has_elderly = any("老人" in t for t in person_types)
+    has_child = any("儿童" in t for t in person_types)
+    if has_elderly or has_child:
+        lines.append("  · 缆车/索道/观光车一般不享受老人儿童优惠，需单独购票")
+        lines.append(f"  · 具体项目和价格请参考上方{scenic}收费方案中的附加项目")
+    else:
+        lines.append(f"  · 请参考上方{scenic}收费方案中的附加项目（缆车/索道/游船等），按需加购")
+
+    lines.append(f"\n💰 门票合计：{total}元（含平台服务费）")
+
+    # AI 免责
+    lines.append(
+        "\n---\n"
+        "⚠️ 票价信息请以景区当日官方公告为准。以上计算基于景区公开收费标准（见上文收费方案），仅供参考。"
+    )
+
+    return {"final_answer": "\n".join(lines)}
 
 
 def node_route_planning(state: TravelState) -> dict:
