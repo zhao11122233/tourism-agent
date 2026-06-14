@@ -3,13 +3,13 @@ LangGraph 文旅 C 端 Agent
 替代原有 LangChain ReAct Agent，提供结构化状态管理和意图路由。
 """
 
-from typing import Annotated, TypedDict, Literal
+from typing import Annotated, TypedDict
 import json
 import re
 
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 
 from model.factory import chat_model
 from utils.logger_handler import logger
@@ -182,7 +182,6 @@ def node_ticket_booking(state: TravelState) -> dict:
     count = state.get("traveler_count", 1)
     phone = state.get("phone", "")
     price_breakdown = state.get("price_breakdown", "")
-    total_price = state.get("total_price", 0)
 
     kwargs = {
         "scenic_spot": scenic,
@@ -489,6 +488,7 @@ def build_travel_graph() -> StateGraph:
             "route_planning": "route_planning",
             "narration": "narration",
             "general": "general",
+            END: END,
         }
     )
 
