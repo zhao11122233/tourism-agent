@@ -85,7 +85,24 @@ def node_parse_intent(state: TravelState) -> dict:
         tomorrow = datetime.date.today() + datetime.timedelta(days=1)
         updates["visit_date"] = tomorrow.strftime("%Y-%m-%d")
 
-    logger.info(f"[TravelAgent] intent={mapped}, traveler_count={updates.get('traveler_count')}")
+    # 检查当前意图的必填字段，标记缺失项
+    required_map = {
+        "ticket_inquiry": ["scenic_spot", "visit_date"],
+        "ticket_booking": ["scenic_spot", "visit_date", "phone"],
+        "route_planning": ["scenic_spot"],
+        "policy_query": [],
+        "narration": [],
+        "general": [],
+    }
+    required = required_map.get(mapped, [])
+    missing = []
+    for field in required:
+        val = state.get(field, "") or updates.get(field, "")
+        if not val:
+            missing.append(field)
+    updates["missing_fields"] = missing
+
+    logger.info(f"[TravelAgent] intent={mapped}, traveler_count={updates.get('traveler_count')}, missing={missing}")
     return updates
 
 
@@ -466,10 +483,14 @@ def build_travel_graph() -> StateGraph:
         "collect_info",
         route_after_collect,
         {
-            "general": "general",  # fallback
+            "ticket_inquiry": "ticket_inquiry",
+            "ticket_booking": "ticket_booking",
+            "policy_query": "policy_query",
+            "route_planning": "route_planning",
+            "narration": "narration",
+            "general": "general",
         }
     )
-    workflow.add_edge("collect_info", END)  # missing fields → end (return question)
 
     # 各业务节点 → END
     workflow.add_edge("ticket_inquiry", END)
