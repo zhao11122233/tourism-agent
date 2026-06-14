@@ -105,9 +105,29 @@ class TicketClient:
             "platforms": platforms,
         }
 
-    def _mock_book(self, scenic_spot: str, visit_date: str, traveler_count: int, phone: str) -> dict:
-        """模拟门票预订，返回预订确认信息"""
+    def _mock_book(self, scenic_spot: str, visit_date: str, traveler_count: int, phone: str, price_breakdown: str = "") -> dict:
+        """模拟门票预订，返回预订确认信息。price_breakdown 为 calc_ticket_price 返回的 JSON，传入时按真实优惠价。"""
         order_id = f"ORD{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(100, 999)}"
+
+        if price_breakdown:
+            try:
+                pb = json.loads(price_breakdown)
+                total = pb.get("total_price", 60 * traveler_count)
+                breakdown = pb.get("price_breakdown", [])
+                note_parts = []
+                for item in breakdown:
+                    ptype = item.get("person_type", "普通成人")
+                    final = item.get("final_price", "?")
+                    reason = item.get("discount_reason", "全价")
+                    note_parts.append(f"{ptype}:{final}元({reason})")
+                note = "；".join(note_parts) + " | 请于游览当日凭订单号和身份证入园，如需取消请在游览前3天操作"
+            except (json.JSONDecodeError, KeyError):
+                total = 60 * traveler_count
+                note = "请于游览当日凭订单号和身份证入园，如需取消请在游览前3天操作"
+        else:
+            total = 60 * traveler_count
+            note = "请于游览当日凭订单号和身份证入园，如需取消请在游览前3天操作"
+
         return {
             "success": True,
             "order_id": order_id,
@@ -115,10 +135,10 @@ class TicketClient:
             "visit_date": visit_date,
             "traveler_count": traveler_count,
             "phone": f"{phone[:3]}****{phone[-4:]}",
-            "total_price": 60 * traveler_count,  # 模拟成人票
+            "total_price": total,
             "status": "已预订",
             "book_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "note": "请于游览当日凭订单号和身份证入园，如需取消请在游览前3天操作",
+            "note": note,
         }
 
     def query_tickets(self, scenic_spot: str, visit_date: str) -> dict:
@@ -160,7 +180,7 @@ class TicketClient:
 
         raise TicketClientError(f"余票查询失败（已重试{self.retry}次）：{last_error}")
 
-    def book_ticket(self, scenic_spot: str, visit_date: str, traveler_count: int, phone: str) -> dict:
+    def book_ticket(self, scenic_spot: str, visit_date: str, traveler_count: int, phone: str, price_breakdown: str = "") -> dict:
         """提交门票预订
 
         Args:
@@ -168,6 +188,7 @@ class TicketClient:
             visit_date: 游玩日期 (YYYY-MM-DD)
             traveler_count: 出行人数
             phone: 联系手机号 (11位)
+            price_breakdown: calc_ticket_price 返回的价格明细 JSON（可选）
 
         Returns:
             dict: 包含订单号和预订状态的确认信息
@@ -189,7 +210,7 @@ class TicketClient:
                 logger.info(f"[TicketClient] 预订{scenic_spot} {visit_date} {traveler_count}人 {phone} (第{attempt+1}次)")
                 if self.base_url:
                     pass
-                result = self._mock_book(scenic_spot, visit_date, traveler_count, phone)
+                result = self._mock_book(scenic_spot, visit_date, traveler_count, phone, price_breakdown)
                 logger.info(f"[TicketClient] 预订成功：{result['order_id']}")
                 return result
             except Exception as e:

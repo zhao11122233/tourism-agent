@@ -34,6 +34,8 @@ class TravelState(TypedDict):
     missing_fields: list
     collect_step: int
     final_answer: str
+    price_breakdown: str   # calc_ticket_price 返回的 JSON（含每人明细 + 总价）
+    total_price: float     # 优惠计算后的合计金额
 
 
 # ============================================================
@@ -157,19 +159,25 @@ def node_ticket_inquiry(state: TravelState) -> dict:
 
 
 def node_ticket_booking(state: TravelState) -> dict:
-    """订票节点：调用 ticket_book"""
+    """订票节点：调用 ticket_book，有存量的 calc_ticket_price 结果则用真实价格"""
     scenic = state.get("scenic_spot", "")
     date = state.get("visit_date", "")
     count = state.get("traveler_count", 1)
     phone = state.get("phone", "")
+    price_breakdown = state.get("price_breakdown", "")
+    total_price = state.get("total_price", 0)
+
+    kwargs = {
+        "scenic_spot": scenic,
+        "visit_date": date,
+        "traveler_count": count,
+        "phone": phone,
+    }
+    if price_breakdown:
+        kwargs["price_breakdown"] = price_breakdown
 
     try:
-        result = ticket_book.invoke({
-            "scenic_spot": scenic,
-            "visit_date": date,
-            "traveler_count": count,
-            "phone": phone,
-        })
+        result = ticket_book.invoke(kwargs)
     except Exception as e:
         result = f"预订时遇到问题：{e}，请稍后再试。"
 
@@ -308,10 +316,17 @@ def node_policy_query(state: TravelState) -> dict:
     # AI 免责
     lines.append(
         "\n---\n"
-        "⚠️ 票价信息请以景区当日官方公告为准。以上计算基于景区公开收费标准（见上文收费方案），仅供参考。"
+        "⚠️ 票价信息请以景区当日官方公告为准。以上计算基于景区公开收费标准，仅供参考。"
+    )
+    lines.append(
+        "\n💡 确认无误？回复\"帮我订\"并提供手机号，我用上述价格为您下单。"
     )
 
-    return {"final_answer": "\n".join(lines)}
+    return {
+        "final_answer": "\n".join(lines),
+        "price_breakdown": price_result,
+        "total_price": total if isinstance(total, (int, float)) else 0,
+    }
 
 
 def node_route_planning(state: TravelState) -> dict:
@@ -486,6 +501,8 @@ class TravelAgent:
             "missing_fields": [],
             "collect_step": 0,
             "final_answer": "",
+            "price_breakdown": "",
+            "total_price": 0,
         }
 
     def _extract_from_text(self, text: str):
@@ -536,6 +553,14 @@ class TravelAgent:
         # 执行 graph
         try:
             result = self.graph.invoke(self._state)
+
+            # 同步状态：graph 内部可能更新了 traveler_count / price_breakdown 等字段
+            for key in ("scenic_spot", "visit_date", "traveler_count", "phone",
+                        "intent", "missing_fields", "collect_step",
+                        "price_breakdown", "total_price"):
+                if key in result:
+                    self._state[key] = result[key]
+
             answer = result.get("final_answer", "")
 
             # 处理 collect_info 返回的追问

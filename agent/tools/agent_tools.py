@@ -2,6 +2,7 @@ import json
 import os
 import re
 import random
+import datetime
 from utils.logger_handler import logger
 from langchain_core.tools import tool
 from rag.rag_service import RagSummarizeService
@@ -835,10 +836,11 @@ def ticket_query(scenic_spot: str, visit_date: str, traveler_count: int = 1) -> 
 
 
 @tool
-def ticket_book(scenic_spot: str, visit_date: str, traveler_count: int = 1, phone: str = "") -> str:
+def ticket_book(scenic_spot: str, visit_date: str, traveler_count: int = 1, phone: str = "", price_breakdown: str = "") -> str:
     """协助用户完成门票预订/预约。提交预订请求，返回订单确认信息。
 
-    入参 scenic_spot 为景区名称，visit_date 为游玩日期，traveler_count 为出行人数，phone 为11位手机号。
+    入参 scenic_spot 为景区名称，visit_date 为游玩日期，traveler_count 为出行人数，phone 为11位手机号，
+    price_breakdown 为 calc_ticket_price 返回的价格明细 JSON 字符串（可选，传入时按真实优惠价格下单）。
     仅在用户明确表示"订票""预订""买票""帮我订"时调用。
     """
     if not scenic_spot:
@@ -857,7 +859,7 @@ def ticket_book(scenic_spot: str, visit_date: str, traveler_count: int = 1, phon
 
     try:
         client = get_ticket_client()
-        result = client.book_ticket(scenic_spot, visit_date, traveler_count, phone)
+        result = client.book_ticket(scenic_spot, visit_date, traveler_count, phone, price_breakdown)
     except TicketClientError as e:
         logger.error(f"[ticket_book]预订失败：{e}")
         return f"很抱歉，{scenic_spot}的门票预订暂时不可用（{str(e)}），请稍后重试或通过景区官方渠道预订。"
